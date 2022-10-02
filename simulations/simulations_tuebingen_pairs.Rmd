@@ -1,0 +1,174 @@
+---
+title: "Real-World Simulations"
+output: html_notebook
+---
+
+```{r}
+# imports
+setwd("C:\\Users\\Annika\\OneDrive\\Dokumente\\Masterarbeit\\34_Part 3 Code own repo")
+source("goodness-of-fit-tests\\svd_based_tests.R")
+source("goodness-of-fit-tests\\minor_based_tests.R")
+sourceCpp("goodness-of-fit-tests\\minor_based_tests_c_optimization.cpp")
+source("simulations\\generate_data.R")
+library(ggplot2)
+
+set.seed(1)
+
+graphics_dir = "C:\\Users\\Annika\\OneDrive\\Dokumente\\Masterarbeit\\00_Eigentliche Arbeit\\Graphics\\"
+filenames <- sprintf("tuebingen_pairs\\pair%04d.txt", seq(1, 108, 1))
+```
+
+## Definition Tests to Apply
+
+```{r}
+polys_DAG1 <- calculate_polynomials_DAG_2_nodes(cause=1)
+polys_DAG2 <- calculate_polynomials_DAG_2_nodes(cause=2)
+polys_full_graph <- calculate_all_minors(2)
+
+polys_DAG1_c <- lapply(polys_DAG1, polynomial_to_c_format)
+polys_DAG2_c <- lapply(polys_DAG2, polynomial_to_c_format)
+polys_full_graph_c <- lapply(polys_full_graph, polynomial_to_c_format)
+
+metrics <- list(
+  "pval_full_u" = function(data) test_U_stat(data, polys_full_graph_c)[['PVAL']], 
+  "pval_DAG1_u" = function(data) test_U_stat(data, polys_DAG1_c)[['PVAL']], 
+  "pval_DAG2_u" = function(data) test_U_stat(data, polys_DAG2_c)[['PVAL']],
+  "pval_indep_full_graph" = function(data) test_indep(data, polys_full_graph)[['PVAL']],
+  "pval_DAG1_indep" = function(data) test_indep(data, polys_DAG1)[['PVAL']], 
+  "pval_DAG2_indep" = function(data) test_indep(data, polys_DAG1)[['PVAL']],
+  "pval_KP" = function(data) test_KP(data, 2, 2)[['PVAL']],
+  "r_0" = function(data) test_svd_bootstrap_lower_rank(data, 2, 2)[['r_0']],
+  "pval_boot" = function(data) test_svd_bootstrap_lower_rank(data, 2, 2)[['PVAL']]
+)
+```
+
+## Apply all Tests
+
+```{r}
+setwd("C:\\Users\\Annika\\OneDrive\\Dokumente\\Masterarbeit\\34_Part 3 Code own repo")
+
+results <- data.frame(matrix(nrow = 0, ncol = length(metrics)+1))
+colnames(results) <- c("pair", names(metrics))
+
+for (i in 1:length(filenames)) {
+  print(i)
+  cause_effect_pair <- read.table(filenames[i], header=F)
+  # Permute rows
+  cause_effect_pair <- cause_effect_pair[sample(nrow(cause_effect_pair)),]
+  # Scale
+  cause_effect_pair <- sapply(cause_effect_pair, function(x) scale(x, scale=TRUE))
+  cause_effect_pair <- as.matrix(cause_effect_pair)
+
+  if (ncol(cause_effect_pair)==2) {
+    results[nrow(results) + 1,] <- c(i, unlist(lapply(metrics, function(metric) metric(cause_effect_pair))))
+  }
+}
+```
+
+```{r}
+write.csv(results, file="results_tuebingen_pairs.csv",row.names=F)
+results <- read.csv("results_tuebingen_pairs.csv")
+```
+
+```{r}
+results$pval_both_DAGs_u <- pmax(results[["pval_DAG1_u"]], results[["pval_DAG2_u"]])
+results$pval_both_DAGs_indep <- pmax(results[["pval_DAG1_indep"]], results[["pval_DAG2_indep"]])
+
+results$accepted_u <- apply(results, 1, function(x) if (x[["pval_full_u"]]<=0.05 && x[["pval_both_DAGs_u"]]<=0.05) "rejected by both" else if(x[["pval_full_u"]]<=0.05) "rejected by full graph test" else if(x[["pval_both_DAGs_u"]]<=0.05) "rejected by DAG test" else "accepted")
+
+results$accepted_indep <- apply(results, 1, function(x) if (x[["pval_indep_full_graph"]]<=0.05 && x[["pval_both_DAGs_indep"]]<=0.05) "rejected by both" else if(x[["pval_indep_full_graph"]]<=0.05) "rejected by full graph test" else if(x[["pval_both_DAGs_indep"]]<=0.05) "rejected by DAG test" else "accepted")
+
+results$accepted_KP <- apply(results, 1, function(x) if (x[["pval_KP"]] <= 0.05) "rejected" else "accepted")
+
+threshold <- 0.05 * 0.9
+results$accepted_bootstrap <- apply(results, 1, function(x) if (x[["r_0"]] == 1 && x[["pval_boot"]] > threshold) "rank 1" else if (x[["r_0"]] == 2 && x[["pval_boot"]] > threshold) "rank 2" else "rejected")
+
+results 
+```
+
+## Scatter Plots with Results
+
+```{r}
+setwd("C:\\Users\\Annika\\OneDrive\\Dokumente\\Masterarbeit\\34_Part 3 Code own repo")
+
+# Create df containing data of all pairs + results for all pairs
+all_pairs <- data.frame(matrix(nrow = 0, ncol = 4))
+colnames(all_pairs) <- c("pair", "V1", "V2")
+
+for (i in 1:length(filenames)) {
+  cause_effect_pair <- read.table(filenames[i], header=F)
+  if (ncol(cause_effect_pair)==2) {
+    cause_effect_pair$pair <- i
+    all_pairs <- rbind(all_pairs, cause_effect_pair)
+  }
+}
+
+all_pairs <- merge(all_pairs, results, by="pair")
+```
+
+```{r}
+colors <- c("accepted"="#134b01", 
+  "rejected"="#af1d0a", 
+  "rejected by full graph test"="#ffec5f", 
+  "rejected by DAG test"="#ff9933", 
+  "rejected by both"="#af1d0a", 
+  "rank 1"="#8dbd6a", 
+  "rank 2"="#134b01")
+
+for (test in c("indep", "u", "bootstrap", "KP")) {
+  ggplot(all_pairs, aes_string(x="V1", y="V2", color=paste("accepted_", test, sep=""))) +
+  facet_wrap(~ pair, scales = "free", ncol = 12) +
+  geom_point(shape=19,size=0.1) +
+  scale_color_manual(values = colors) +
+  theme(axis.text.x=element_blank(), axis.text.y=element_blank(), 
+    axis.ticks=element_blank(),# 
+    strip.background = element_blank(),
+    strip.text = element_text(colour = "black"),
+    panel.background = element_blank(),
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(),
+    panel.border = element_rect(colour = "grey40", fill=NA, size=0.1),
+    legend.title = element_blank(),
+    legend.key = element_rect(fill = "white"),
+    legend.position = "none")
+
+  ggsave(paste(graphics_dir, "tueb_results_", test, ".png", sep=""), width = 35, height = 31, units = "cm")
+}
+```
+
+## Plot Distributions Pairs
+
+```{r}
+#####################
+# Plots single pair #
+#####################
+for (i in 5:17) {
+  cause_effect_pair <- read.table(filenames[i], header=F)
+
+  range_V1 = max(cause_effect_pair$V1) - min(cause_effect_pair$V1)
+  ggplot(cause_effect_pair, aes_string(x="V1")) +
+    geom_histogram(aes(y=..density..), fill="#8f8f8f", color = "black", binwidth = range_V1/75,size=0.1) +
+    geom_density() +
+    labs(title="",x="Age", y = "")+
+    theme(plot.title = element_text(face="bold")) + 
+    theme(plot.title = element_text(hjust = 0.5))
+      
+  ggsave(paste(graphics_dir, "tueb_", i, "_distr_V1.png", sep=""), width = 12, height = 10, units = "cm")
+
+  range_V2 = max(cause_effect_pair$V2) - min(cause_effect_pair$V2)
+    ggplot(cause_effect_pair, aes_string(x="V2")) +
+    geom_histogram(aes(y=..density..), fill="#8f8f8f", color = "black", binwidth = range_V2/50 ,size=0.1)  + 
+    geom_density() +
+    labs(title="",x="Hourly Wage", y = "")+
+    theme(plot.title = element_text(face="bold")) + 
+    theme(plot.title = element_text(hjust = 0.5))
+      
+  ggsave(paste(graphics_dir, "tueb_", i, "_distr_V2.png", sep=""), width = 12, height = 10, units = "cm")
+
+  ggplot(cause_effect_pair, aes(x=V1, y=V2)) +
+    geom_point(shape=19, size=1) +
+    labs(title="",x="V1", y = "V2")
+
+  ggsave(paste(graphics_dir, "tueb_", i, "_scatter.png", sep=""), width = 12, height = 10, units = "cm")
+}
+```
