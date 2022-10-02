@@ -15,7 +15,7 @@ sourceCpp("goodness-of-fit-tests\\minor_based_tests_c_optimization.cpp")
 
 # Calculate all minors of the matrix M for p nodes in the format needed for the not optimized code
 calculate_all_minors <- function(p) {
-    col_names <- apply(combinations(p , 2, 1:p, repeats.allowed=T), 1, function(row) paste(row, collapse = ""))
+    col_names <- apply(combinations(p, 2, 1:p, repeats.allowed=T), 1, function(row) paste(row, collapse = ""))
     M <- matrix(, nrow = 1 + p, ncol = length(col_names))
     rownames(M) <- c("", 1:p)
     colnames(M) <- col_names
@@ -368,7 +368,7 @@ test_indep <- function(X, polynomials, E=1000){
 test_U_stat <- function(X, polynomials, E=1000, n1=min(nrow(X),500), N=2*nrow(X)){
   n = nrow(X)
   p = length(polynomials)
-  order_kernel = max(sapply(polynomials, degree_c))
+  order_kernel = max(sapply(polynomials, degree_poly_c_format))
   N = min(0.7*choose(n,order_kernel), N)
 
   # Determine N_hat by Bernoulli sampling
