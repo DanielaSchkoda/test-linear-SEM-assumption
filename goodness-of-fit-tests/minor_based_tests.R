@@ -1,3 +1,5 @@
+# The code is adapted from Nils Sturma, https://github.com/NilsSturma/TestGGM
+
 # imports
 library(gtools)
 library(expm)

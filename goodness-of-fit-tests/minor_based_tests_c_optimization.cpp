@@ -1,4 +1,4 @@
-// [[Rcpp::plugins(cpp11)]]
+// The code is adapted from Nils Sturma, https://github.com/NilsSturma/TestGGM
 #include <Rcpp.h>
 #include <set>
 #include <array>
