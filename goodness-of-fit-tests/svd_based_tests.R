@@ -54,7 +54,6 @@ calculate_A_perp_B_perp <- function(M, r) {
 
     A_perp <- svd_decomp[[2]][, (r + 1):nrow(M)] %*% solve(U_22) %*% sqrtm(U_22 %*% t(U_22))
     B_perp <- sqrtm(V_22 %*% t(V_22)) %*% solve(t(V_22)) %*% t(svd_decomp[[3]][, (r + 1):ncol(M)])
-    #print(V_22)
     return(list("A_perp"=A_perp, "B_perp"=B_perp))
 }
 
@@ -69,10 +68,10 @@ test_KP <- function(X, p, r, scaling=FALSE) {
     # Scaling
     if (scaling) {
       G <- matrix(0, nrow = nrow(M), ncol = nrow(M))
-      diag(G) <- c(1, apply(X, 2, mean))
+      diag(G) <- c(1, 1/sqrt(apply(X^2, 2, mean)))
       column_indices <- generate_pairs(p)
       H <- matrix(0, nrow = ncol(M), ncol = ncol(M))
-      diag(H) <- sapply(column_indices, function(ind) estimate_moment(X, ind))
+      diag(H) <- sapply(column_indices, function(ind) 1/sqrt(mean(X[,ind[1]]^2)) * 1/sqrt(mean(X[,ind[2]]^2)))
     } else {
       G <- diag(nrow = nrow(M))
       H <- diag(nrow = ncol(M))
@@ -131,6 +130,7 @@ test_svd_bootstrap <- function(X, r, E=1000) {
     return(list("PVAL" = pval, "TSTAT" = phi_r))
 }
 
+# SVD bootstrap test that takes possibility of lower rank into account
 test_svd_bootstrap_lower_rank <- function(X, p, r, E=1000) {
     n <- nrow(X)
     M_hat <- estimate_M(X, p)
@@ -141,15 +141,11 @@ test_svd_bootstrap_lower_rank <- function(X, p, r, E=1000) {
     r_0 <- r+1 
     for (r_prime in 1:r) {
         # If one of the tests accepts, set r_0 = r
-        res <- test_KP(X, p, r_prime)
+        res <- test_KP(X, p, r_prime,scaling=TRUE)
         if(res[["PVAL"]] >= beta) {
             r_0 <- r_prime
             break
         }
-    }
-
-    if (r_0 < r) {
-        print(paste("r_0 is ", r_0))
     }
 
     if (r_0 == r+1) {

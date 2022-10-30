@@ -1,0 +1,202 @@
+---
+title: "Simulations"
+output: html_notebook
+---
+```{r}
+# imports
+source("goodness-of-fit-tests\\svd_based_tests.R")
+source("goodness-of-fit-tests\\minor_based_tests.R")
+sourceCpp("goodness-of-fit-tests\\minor_based_tests_c_optimization.cpp")
+source("simulations\\generate_data.R")
+library(ggplot2)
+library(numbers)
+```
+
+```{r}
+set.seed(1)
+```
+
+```{r}
+p <- 2
+n_simulations <- 1000
+n <- 1000
+noise_distr <- "gamma"
+
+parameters <- c("p"=p, "n_simulations"=n_simulations, "n"=n, "noise_distr"=noise_distr)
+
+all_minors <- calculate_all_minors(p) 
+all_polynomials <- c(calculate_all_minors(p), list(polynomial_sym_rank_3))
+all_minors_c <- lapply(all_minors, polynomial_to_c_format)
+```
+
+## $$H_0$$
+```{r}
+tests <- if (p==2) list(
+  "U" = function(data) test_U_stat(data, all_minors_c)[['PVAL']],
+  "indep" = function(data) test_indep(data, all_minors)[['PVAL']],
+  "KP" = function(data) test_KP(data, p, p)[['PVAL']],
+  "svd_bootstrap" = function(data) test_svd_bootstrap_lower_rank(data, p, p)[['PVAL']]
+) else list(
+  "indep_only_minors" = function(data) test_indep(data, all_minors)[['PVAL']],
+  "indep_everything" = function(data) test_indep(data, all_polynomials)[['PVAL']],
+  "KP" = function(data) test_KP(data, p, p)[['PVAL']],
+  "svd_bootstrap" = function(data) test_svd_bootstrap_lower_rank(data, p, p)[['PVAL']]
+)
+
+pretty_names_tests <- list(
+  "U" = "Incomplete U-statistics",
+  "indep" = "Independent statistic",
+  "indep_only_minors" = "Independent statistic only Minors",
+  "indep_everything" = "Independent Statistic including Rank Poylnomial",
+  "KP" = "KP statistic",
+  "svd_bootstrap" = "Bootstrap SVD statistic"
+)
+```
+
+## P values under H_0
+```{r}
+p_values <- data.frame(matrix(nrow = 0, ncol = length(tests)))
+colnames(p_values) <- names(tests)
+
+for (sim in 1:n_simulations) {
+    X  <- generate_data_H_0(n, p, noise_distr)
+    p_values[nrow(p_values) + 1,] <- lapply(tests, function(test) test(X))
+}
+```
+
+## P values under H_0, high correlation
+Scatter plot of components
+```{r}
+eps <- t(calculate_eps(n, p, noise_distr))
+X <- matrix(, n, 2)
+X[,1] <- eps[,1]
+X[,2] <- eps[,1] + 0.001 * eps[,2]
+
+ggplot(as.data.frame(X), aes(x=V1, y=V2)) +
+  geom_point()
+
+ggplot(as.data.frame(X), aes(x=V2)) +
+  geom_histogram(binwidth = 0.05)
+
+ggplot(as.data.frame(X), aes(x=V1)) +
+  geom_histogram(binwidth = 0.05)
+```
+
+
+```{r}
+p_values <- data.frame(matrix(nrow = 0, ncol = length(tests)))
+colnames(p_values) <- names(tests)
+
+for (sim in 1:n_simulations) {
+    eps <- t(calculate_eps(n, p, noise_distr))
+    X <- matrix(, n, 2)
+    X[,1] <- eps[,1]
+    X[,2] <- eps[,1] + 0.001 * eps[,2]
+    p_values[nrow(p_values) + 1,] <- lapply(tests, function(test) test(X))
+}
+```
+
+## Alternative 1
+```{r}
+p_values <- data.frame(matrix(nrow = 0, ncol = length(tests)))
+colnames(p_values) <- names(tests)
+
+for (sim in 1:n_simulations) {
+    X  <- apply(generate_data_H_0(n, p, noise_distr), c(1,2), cos)
+    p_values[nrow(p_values) + 1,] <- lapply(tests, function(test) test(X))
+}
+```
+
+## Alternative 2
+```{r}
+delta <- 0.1
+eps <- t(calculate_eps(n, p, noise_distr))
+X <- matrix(, n, 2)
+X[,1] <- eps[,1]
+X[,2] <- sapply(eps[,1], function(x) delta * x^2 + x) + eps[,2]
+
+ggplot(as.data.frame(X), aes(x=V1, y=V2)) +
+  geom_point()
+
+ggplot(as.data.frame(X), aes(x=V2)) +
+  geom_histogram(binwidth = 0.05)
+
+ggplot(as.data.frame(X), aes(x=V1)) +
+  geom_histogram(binwidth = 0.05)
+```
+
+```{r}
+p_values <- data.frame(matrix(nrow = 0, ncol = length(tests)))
+colnames(p_values) <- names(tests)
+deltas <- seq(0, 1, by=0.1)
+n_simulations <- 1000
+
+for (delta in deltas) {
+  for (sim in 1:n_simulations) {
+    eps <- t(calculate_eps(n, p, noise_distr))
+    X <- matrix(, n, 2)
+    X[,1] <- eps[,1]
+    X[,2] <- sapply(eps[,1], function(x) delta * x^2 + x) + eps[,2]
+    p_values[nrow(p_values) + 1,] <- lapply(tests, function(test) test(X))
+  }
+}
+```
+
+## Plots
+### p-value distribution
+```{r}
+for (test in colnames(p_values)) {
+  ggplot(p_values, aes_string(x=test)) +
+  geom_histogram(fill="#8f8f8f", color = "black", binwidth = 0.02 ,size=0.1) + 
+  labs(title="",x="", y = "")+
+  coord_cartesian(xlim = c(0, 1))
+  ggsave(paste("pvals_", test, "_", paste(names(parameters), parameters, sep = "=", collapse = "_"), "_b.png", sep=""), width = 12, height = 10, units = "cm")
+}
+```
+
+### Empirical sizes
+```{r}
+alphas <- seq(0, 1, by=0.01)
+colnames(p_values) <- sapply(colnames(p_values), function(name) pretty_names_tests[[name]])
+
+emp_sizes <- data.frame(x=1:length(alphas))
+for (test in colnames(p_values)) {
+  emp_sizes[[test]] <- sapply(alphas, function(alpha) length(which(p_values[[test]] <= alpha))/n_simulations)
+}
+
+# all sizes in one column to plot it in one plot
+stats <- rep(colnames(p_values), each = length(alphas))
+emp_sizes_concateneted <- unlist(lapply(colnames(p_values), function(test) emp_sizes[[test]]))
+emp_sizes_all_tests <- data.frame("size" = emp_sizes_concateneted, "stat"=stats)
+emp_sizes_all_tests <- emp_sizes_all_tests[emp_sizes_all_tests$stat != "KP statistic with scaling", ]
+
+ggplot(data.frame(alphas, emp_sizes_all_tests), aes(x=alphas, y=size)) +
+  geom_point(aes(shape=stat)) + 
+  scale_shape_manual(values = c(1, 17, 15, 4, 3)) +
+  labs(title="",x="Nominal size", y = "Empirical size", fill="") +
+  guides(shape = guide_legend(title = "")) +
+  theme_linedraw() 
+```
+
+### Empirical local powers at level alpha=0.05
+```{r}
+p_values$delta <- rep(deltas, each=1000)
+powers <- aggregate(p_values[names(tests)], by=list(delta=p_values$delta), FUN=function(x) length(which(unlist(x) <= 0.05))/n_simulations)
+colnames(powers) <- c("delta", sapply(names(tests), function(name) pretty_names_tests[[name]]))
+powers
+```
+```{r}
+# all sizes in one column to plot it in one plot
+stats <- rep(sapply(names(tests), function(name) pretty_names_tests[[name]]), each = length(deltas))
+powers_concateneted <- unlist(lapply( sapply(names(tests), function(name) pretty_names_tests[[name]]), function(test) powers[[test]]))
+powers_concateneted <- data.frame("power" = powers_concateneted, "stat"=stats)
+
+ggplot(data.frame(deltas, powers_concateneted), aes(x=deltas, y=power)) +
+  geom_point(aes(shape=stat)) + 
+  scale_shape_manual(values = c(1, 17, 15, 4, 3)) +
+  labs(title="",x=expression(delta), y = "Empirical power") +
+  guides(shape = guide_legend(title = "")) +
+  theme_linedraw() 
+```
+
+
