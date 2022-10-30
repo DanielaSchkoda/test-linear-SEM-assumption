@@ -13,6 +13,7 @@ library(ggplot2)
 
 set.seed(1)
 
+# The data used can be obtained from https://webdav.tuebingen.mpg.de/cause-effect/
 filenames <- sprintf("tuebingen_pairs\\pair%04d.txt", seq(1, 108, 1))
 ```
 
