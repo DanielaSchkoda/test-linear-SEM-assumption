@@ -61,6 +61,9 @@ calculate_A_perp_B_perp <- function(M, r) {
 ## KP rank test ##
 ##################
 
+# Implementation of Kleibergen-Paap from
+# Frank Kleibergen and Richard Paap. “Generalized reduced rank tests using the singular 
+# value decomposition”. In: Journal of Econometrics 133.1 (2006), pp. 97– 126.
 test_KP <- function(X, p, r, scaling=FALSE) {
     n <- nrow(X)
     M <- estimate_M(X, p)
@@ -99,7 +102,9 @@ test_KP <- function(X, p, r, scaling=FALSE) {
 #######################
 # Test with bootstrap #
 #######################
-
+# Implementation of rank test developed by Chen
+# Qihui Chen and Zheng Fang. “Improved inference on the rank of a matrix”. In:
+# Quantitative Economics 10.4 (2019), pp. 1787–1824.
 calculate_test_stat_svd <- function(data, ind, rank, M_hat, U_2, V_2) {
     n <- nrow(data)
     p <- ncol(data)
