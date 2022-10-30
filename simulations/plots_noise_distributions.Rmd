@@ -1,0 +1,27 @@
+---
+title: "Simulations"
+output: html_notebook
+---
+
+```{r}
+# imports
+source("simulations\\generate_data.R")
+library(ggplot2)
+```
+
+```{r}
+set.seed(1)
+```
+
+```{r}
+noise_distr <- "gamma"
+samples_epsilon <- data.frame(sample=factor(rep(1:15, 
+                                      each=100000)),
+                    value=unlist(lapply(1:15, function(x) calculate_eps(100000, 1, noise_distr)[1,])))
+
+ggplot(samples_epsilon, aes(x=value, color=sample)) + 
+  geom_density() + 
+  scale_color_brewer(palette="RdYlBu") +
+  labs(title="",x="", y = "", fill="") +
+  theme(legend.position="none")
+```
